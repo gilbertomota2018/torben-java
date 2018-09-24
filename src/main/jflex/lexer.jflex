@@ -44,6 +44,7 @@ import java_cup.runtime.ComplexSymbolFactory;
       return new Location(unit, yyline + 1, yycolumn + 1, yychar);
    }
 
+
    private Location locRight() {
       return new Location(unit, yyline + 1, yycolumn + 1 + yylength(), yychar + yylength());
    }
@@ -74,32 +75,54 @@ import java_cup.runtime.ComplexSymbolFactory;
    }
 
    // Auxiliary variables
-   private int commentLevel;
+   // ... COMPLETE AS NEEDED ...
+   private int commentLevel = 0;
    private StringBuilder builder = new StringBuilder();
-   private Location strLeft;
 %}
 
 %state COMMENT
 %state STR
 
-litint    = [0-9]+
-id        = [a-zA-Z][a-zA-Z0-9_]*
+LineTerminator = \r|\n|\r\n
+
+/* white spaces */
+white_space = {LineTerminator} | [ \t\f]
+
+id = [a-zA-Z][a-zA-Z0-9_]*
 
 %%
 
 <YYINITIAL>{
+
 [ \t\f\n\r]+ { /* skip */ }
-"#" .*       { /* skip */ }
-"{#"         { yybegin(COMMENT); commentLevel = 1; }
+# .*  { /* skip */ }
+"{#"                 { yybegin(COMMENT); commentLevel = 1; }
+\"               { builder.setLength(0); locLeft();
+                   yybegin(STR);
+                 }
 
-true         { return tok(LITBOOL, true); }
-false        { return tok(LITBOOL, false); }
-{litint}     { return tok(LITINT, new Integer(yytext())); }
-\"           { builder.setLength(0); strLeft = locLeft(); yybegin(STR); }
 
-void         { return tok(VOID); }
-bool         { return tok(BOOL); }
-int          { return tok(INT); }
+":="         { return tok(ASSIGN); }
+"="          { return tok(EQ); }
+"("          { return tok(LPAREN); }
+")"          { return tok(RPAREN); }
+","          { return tok(COMMA); }
+"+"          { return tok(PLUS); }
+"-"          { return tok(MINUS); }
+"*"          { return tok(TIMES); }
+"/"          { return tok(DIV); }
+"%"          { return tok(MOD); }
+"<>"         { return tok(NE); }
+"<"          { return tok(LT); }
+"<="         { return tok(LE); }
+">"          { return tok(GT); }
+">="         { return tok(GE); }
+"&&"         { return tok(AND); }
+"||"         { return tok(OR); }
+
+
+bool         {return tok(BOOL); }
+int          {return tok(INT); }
 string       { return tok(STRING); }
 if           { return tok(IF); }
 then         { return tok(THEN); }
@@ -109,49 +132,44 @@ do           { return tok(DO); }
 let          { return tok(LET); }
 in           { return tok(IN); }
 
-{id}         { return tok(ID, yytext().intern()); }
+{id}         { return tok(ID, yytext());}
 
-":="         { return tok(ASSIGN); }
-"+"          { return tok(PLUS); }
-"-"          { return tok(MINUS); }
-"*"          { return tok(TIMES); }
-"/"          { return tok(DIV); }
-"%"          { return tok(MOD); }
-"="          { return tok(EQ); }
-"<>"         { return tok(NE); }
-"<"          { return tok(LT); }
-"<="         { return tok(LE); }
-">"          { return tok(GT); }
-">="         { return tok(GE); }
-"&&"         { return tok(AND); }
-"||"         { return tok(OR); }
-"&&"         { return tok(AND); }
-"("          { return tok(LPAREN); }
-")"          { return tok(RPAREN); }
-","          { return tok(COMMA); }
+
+[0-9]+       { return tok(LITINT, Integer.parseInt(yytext())); }
+true|false   { return tok(LITBOOL, Boolean.parseBool(yytext())); }
+<<EOF>>      { return tok(EOF); }
+
+/*white space*/
+{white_space}     { /* ignore */ }
+
 }
 
-<COMMENT>{
-"{#"         { ++commentLevel; }
-"#}"         { if (--commentLevel == 0) yybegin(YYINITIAL); }
-[^]          { }
-<<EOF>>      { yybegin(YYINITIAL); error("unclosed comment"); }
+<COMMENT> {
+"{#"            { commentLevel --;
+                  if (commentLevel == 0)
+                      yybegin(YYINITIAL);
+                }
+"#}"            { commentLevel ++; }
+<<EOF>>         { yybegin(YYINITIAL);
+                  System.err.println("error: unclosed comment");
+                }
+[^]             { }
 }
 
-<STR>{
-\"           { yybegin(YYINITIAL); return tok(LITSTRING, builder.toString(), strLeft, locRight()); }
-\\ b         { builder.append('\b'); }
-\\ t         { builder.append('\t'); }
-\\ n         { builder.append('\n'); }
-\\ r         { builder.append('\r'); }
-\\ f         { builder.append('\f'); }
-\\ \\        { builder.append('\\'); }
-\\ \"        { builder.append('"'); }
-\\ [0-9]{3}  { builder.append((char)(Integer.parseInt(yytext().substring(1)))); }
-\\ .         { error("invalid escape arguments in string literal"); }
-[^\"\n\\]+   { builder.append(yytext()); }
-\n           { error("invalid newline in string literal"); }
-<<EOF>>      { yybegin(YYINITIAL); error("unclosed string literal"); }
-}
+
+<STR> \"         { yybegin(YYINITIAL); return tok(LITSTRING, builder.toString(), locLeft(), locRight()); }
+<STR> \\ b        { builder.append('\b'); }
+<STR> \\ t        { builder.append('\t'); }
+<STR> \\ n        { builder.append('\n'); }
+<STR> \\ r        { builder.append('\r'); }
+<STR> \\ f        { builder.append('\f'); }
+<STR> \\ \\       { builder.append('\\'); }
+<STR> \\ \"       { builder.append('"'); }
+<STR> \\ [0-9]{3} { builder.append((char)(Integer.parseInt(yytext().substring(1)))); }
+<STR> \\ .        { error("invalid escape sequence in string literal"); }
+<STR> [^\"\n\\]+  { builder.append(yytext()); }
+<STR> \n          { error("invalid newline in string literal"); }
+<STR> <<EOF>>     { yybegin(YYINITIAL); error("unclosed string literal"); }
+
 
 .            { error("invalid character '%s'", yytext()); }
